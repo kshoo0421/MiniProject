@@ -9,7 +9,7 @@
 #define PORT 5100
 
 /* 라즈베리파이 주소 */
-#define PI_ADDR "192.168.0.7"
+#define PI_ADDR "192.168.0.10"
 
 /* USER : ID/PW */
 #define ID_SIZE 21 // 20글자 + '\0'
