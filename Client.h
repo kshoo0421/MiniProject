@@ -11,15 +11,13 @@
 /* 클라이언트 구조체 정의 */
 typedef struct client {
     int sockfd;
-    int clientNum;
-    char id[ID_SIZE];
-
+    int pipefd[2];
+    char id[ID_SIZE], buffer[BUFFER_SIZE];
     struct sockaddr_in server_addr;
-    char buffer[BUFFER_SIZE];
 } Client;
 
 // 클라이언트는 하나만 존재
-static Client* User;
+static Client User;
 
 /* main.c용 함수. C_로 시작 */
 void C_init();          // 클라이언트 초기화
@@ -32,6 +30,10 @@ void c_SetUserId(); // 사용자 ID 설정
 void c_InitClientSocket(); // 클라이언트 소켓 생성
 void c_SetServerAddress(); // 서버 주소 설정
 void c_ConnectToServer(); // 서버 연결
+
+void c_ChildProcess(); // 자식 프로세스: 사용자 입력을 처리
+void c_ParentProcess(); // 부모 프로세스: 서버와의 통신 처리
+
 
 void c_SetBuffer(char* chat); // "ID : (채팅 내용)"양식으로 버퍼 업데이트
 #endif

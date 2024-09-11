@@ -2,17 +2,22 @@
 #define _SERVER_H_
 
 #include <arpa/inet.h> // struct sockaddr_in
+
 #include "Macros.h"
 
 typedef struct server {
     int max_client, server_fd, new_socket, max_sd, sd, activity;
     int* client_socket;
+    int pipes[50][2];
+    
     char buffer[BUFFER_SIZE];
+
     struct sockaddr_in address;
+    pid_t pid;
 } Server;
 
 // 서버는 하나만 존재
-static Server* ChatServer;
+static Server ChatServer;
 
 /* main.c용 함수. S_로 시작 */
 void S_Init();          // 서버 초기화
@@ -25,5 +30,7 @@ void s_InitServerSocket(); // 서버 소켓 초기화
 void s_SetServerAddress(); // 서버 주소 설정
 void s_BindServerSocket(); // 서버 소켓 바인딩
 
-
+void s_ListenClients(); // 클라이언트 접속 대기
+void s_ChildProcess();
+void s_ParentProcess();
 #endif

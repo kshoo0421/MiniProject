@@ -2,6 +2,7 @@
     "files.associations": {
         "stdlib.h": "c",
         "macros.h": "c",
-        "inet.h": "c"
+        "inet.h": "c",
+        "stdio.h": "c"
     }
 }
