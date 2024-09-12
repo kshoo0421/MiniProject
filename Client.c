@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h> // non-blocking
 
 #include "Client.h"
 
@@ -19,6 +20,15 @@ void C_Connect() {
 }
 
 void C_ClientService() {
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    char buffer[BUFFER_SIZE];
+    memset(buffer, 0, BUFFER_SIZE);        
+
     // 자식 프로세스 생성
     pid_t pid = fork();
     if (pid < 0) { // fork 실패
@@ -26,10 +36,10 @@ void C_ClientService() {
         exit(EXIT_FAILURE);
     }
     else if (pid == 0) { // 자식 프로세스: 사용자 입력을 처리
-        c_ChildProcess();
+        c_ChildProcess(pipefd, buffer);
     } 
     else {
-        c_ParentProcess(); // 부모 프로세스: 서버와의 통신 처리
+        c_ParentProcess(pipefd, buffer); // 부모 프로세스: 서버와의 통신 처리
     }
 }
 
@@ -42,20 +52,14 @@ void C_Close() {
 /* ===== 내부 함수 구현 ===== */
 /* 사용자 ID 설정 */
 void c_SetUserId() { 
-    printf("c_SetUserId()\n");
     printf("채팅에 사용할 ID를 입력하세요(최대 20글자) : ");
     fgets(User.id, sizeof(User.id), stdin);
-    size_t len = strlen(User.id);
-    if (len > 0 && User.id[len - 1] == '\n') {
-        User.id[len - 1] = '\0';  // 개행 문자 제거
-    }
+    User.id[strcspn(User.id, "\n")] = '\0'; // 줄바꿈 제거
     printf("현재 id : %s\n", User.id);
 }
 
 /* 클라이언트 소켓 생성 */
 void c_InitClientSocket() {
-    printf("c_InitClientSocket()\n");
-
     User.sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (User.sockfd < 0) {
         perror("socket failed");
@@ -65,13 +69,10 @@ void c_InitClientSocket() {
 
 /* 서버 주소 설정 */
 void c_SetServerAddress() {
-    printf("c_SetServerAddress()\n");
     // 서버 주소 설정
     User.server_addr.sin_family = AF_INET;
     User.server_addr.sin_addr.s_addr = inet_addr(PI_ADDR);  // 로컬 IP
     User.server_addr.sin_port = htons(PORT);
-
-    printf("server ip1 : %u\n", User.server_addr.sin_addr.s_addr);
 
     // 서버 IP 주소 (localhost)
     if (inet_pton(AF_INET, PI_ADDR, &(User.server_addr.sin_addr)) <= 0) {
@@ -83,7 +84,6 @@ void c_SetServerAddress() {
 
 /* 서버 연결 */
 void c_ConnectToServer() {
-    printf("c_ConnectToServer()\n");
     if (connect(User.sockfd, (struct sockaddr *)&(User.server_addr), 
     sizeof(User.server_addr)) < 0) {
         perror("Connection failed");
@@ -91,59 +91,41 @@ void c_ConnectToServer() {
         exit(EXIT_FAILURE);
     }
     printf("서버에 연결되었습니다.\n");
-    printf("server ip2 : %u\n", User.server_addr.sin_addr.s_addr);
 }
 
 /* 자식 프로세스: 사용자 입력을 처리 */
-void c_ChildProcess() {
-    printf("c_ChildProcess() 1\n");
-    close(User.pipefd[0]);  // 자식은 읽기 파이프를 닫음
+void c_ChildProcess(int pipefd[2], char* buffer) {
+    close(pipefd[0]);  // 자식은 읽기 파이프를 닫음
 
-    char buffer[BUFFER_SIZE];
-
-    while (1) {
-        printf("c_ChildProcess() 2\n");
-        
-        memset(buffer, 0, BUFFER_SIZE);
-        
-        printf("buffer1 : %s\n", buffer);
-        printf("c_ChildProcess() 3\n");
-        
+    while (1) {        
         fgets(buffer, BUFFER_SIZE, stdin);        
         buffer[strcspn(buffer, "\n")] = '\0'; // 줄바꿈 제거
-
-        printf("buffer2 : %s\n", buffer);
-        printf("c_ChildProcess() 4\n");
-
         // "exit" 입력 시 클라이언트 종료
         if (strcmp(buffer, "exit") == 0) {
             printf("종료\n");
-            write(User.pipefd[1], "exit", strlen("exit"));
+            write(pipefd[1], "exit", strlen("exit"));
             break;
         }
 
         // 사용자 입력을 파이프로 부모에게 전달
-        write(User.pipefd[1], buffer, strlen(buffer));
-
-        sleep(1);
+        write(pipefd[1], buffer, strlen(buffer));
+        memset(buffer, 0, BUFFER_SIZE);        
     }
 
-    close(User.pipefd[1]);
+    close(pipefd[1]);
     exit(0);
 }
 
 /* 부모 프로세스: 서버와의 통신 처리 */
-void c_ParentProcess() {
-    printf("c_ParentProcess()\n");
-
-    close(User.pipefd[1]);  // 부모는 쓰기 파이프를 닫음
-
-    char buffer[BUFFER_SIZE];
+void c_ParentProcess(int pipefd[2], char* buffer) {
+    close(pipefd[1]);  // 부모는 쓰기 파이프를 닫음
+    c_MakeNonblock(pipefd[0]);
+    c_MakeNonblock(User.sockfd);
 
     while (1) {
         // 파이프에서 사용자 입력 읽기
         memset(buffer, 0, BUFFER_SIZE);
-        int bytes_read = read(User.pipefd[0], buffer, BUFFER_SIZE);
+        int bytes_read = read(pipefd[0], buffer, BUFFER_SIZE);
         if (bytes_read > 0) {
             buffer[bytes_read] = '\0';
             // "exit" 메시지를 받으면 종료
@@ -159,26 +141,20 @@ void c_ParentProcess() {
         int valread = read(User.sockfd, buffer, BUFFER_SIZE);
         if (valread > 0) {
             buffer[valread] = '\0';
-            printf("%s\n", buffer);
+            printf("server : %s\n", buffer);
         }
     }
-    close(User.pipefd[0]);
-    close(User.sockfd);
+    close(pipefd[0]);
 }
 
-// /* "ID : (채팅 내용)"에 채팅 내용을 업데이트 */
-// void c_SetBuffer(char* chat) {
-//     int idLen = strlen(User.id);
-//     int chatLen = strlen(chat);
-//     if(idLen + chatLen + 2 >= BUFFER_SIZE) {
-//         chat[BUFFER_SIZE - idLen - 2] = '\0';
-//     }
-//     strcpy(User.buffer, User.id);
-//     User.buffer[idLen] = ':';
-//     User.buffer[idLen + 1] = ' ';
-
-//     strcpy((User.buffer) + idLen + 2, chat);
-    
-//     // check
-//     printf("c_SetBuffer check : %s\n", User.buffer);
-// }
+void c_MakeNonblock(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1) {
+        perror("fcntl");
+        exit(1);
+    }
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl");
+        exit(1);
+    }
+}

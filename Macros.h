@@ -2,7 +2,7 @@
 #define _MACROS_H_
 
 /* 클라이언트인지 서버인지 구분 */
-#define CLIENT_MODE
+// #define CLIENT_MODE
 #define SERVER_MODE
 
 /* 포트 번호 고정 */ 

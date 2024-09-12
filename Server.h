@@ -6,7 +6,7 @@
 #include "Macros.h"
 
 typedef struct server {
-    int max_client, server_fd, max_sd, sd, activity;
+    int max_client, server_sock, max_sd, sd, activity;
     int* client_socket;
     int pipes[50][2];
 
@@ -24,10 +24,18 @@ void S_Close();         // 서버 종료
 /* Server.c용 함수 선언. s_로 시작*/
 void s_InitClientSocket(); // 클라이언트 소켓 초기화
 void s_InitServerSocket(); // 서버 소켓 초기화
+void s_InitPipes();
 void s_SetServerAddress(); // 서버 주소 설정
 void s_BindServerSocket(); // 서버 소켓 바인딩
 
 void s_ListenClients(); // 클라이언트 접속 대기
-void s_ChildProcess(int new_socket);
-void s_ParentProcess(int new_socket);
+void s_GetMessageFromClient(int idx);
+void s_ForkForBroadCast();
+void s_Broadcast();
+void s_WaitForAccept();
+int s_AcceptNewSocket();
+int s_UpdateNewSocket(int new_socket);
+void s_ForkForClientMessage(int idx);
+void s_MakeNonblock(int fd);
+void s_ReadAndBroad(int idx);
 #endif

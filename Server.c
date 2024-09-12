@@ -2,63 +2,34 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h> // non-blocking
 #include "Server.h"
 
 /* ===== main.c용 함수 구현 ====== */
 /* 서버 초기화 */
 void S_Init() {
-//    printf("S_Init()\n");
     s_InitClientSocket();
-    s_InitServerSocket();    
+    s_InitServerSocket();
+    s_InitPipes();    
     s_SetServerAddress();
     s_BindServerSocket();
 }
 
 /* 서버 운영 */
 void S_ServerService() {
-//    printf("S_ServerService()\n");
-    // int pipes[ChatServer.max_client][2]; // 각 클라이언트와 통신할 파이프 배열
     s_ListenClients();
-
-    while (1) {
-        // printf("S_ServerService() - while() 1\n");
-
-        // 새로운 클라이언트 연결 수락
-        int addrlen = sizeof(ChatServer.address);
-        printf("S_ServerService() - while() 2\n");
-        int new_socket = accept(ChatServer.server_fd, 
-            (struct sockaddr *)&(ChatServer.address), (socklen_t *)&addrlen);
-        printf("S_ServerService() - while() 3\n");
-
-        if (new_socket < 0) {
-            perror("accept failed");
-            exit(EXIT_FAILURE);
-        }
-
-        printf("클라이언트 접속, socket fd: %d\n", new_socket);
-
-        // 자식 프로세스 생성
-        pid_t pid = fork();
-
-        if (pid == 0) { // 자식 프로세스
-            s_ChildProcess(new_socket);
-        } 
-        else { // 부모 프로세스
-            s_ParentProcess(new_socket);
-        }
-    }
+    s_ForkForBroadCast();
+    s_WaitForAccept();
 }
 
 /* 서버 종료 */ 
 void S_Close() {
-    printf("S_Close()\n");
-    close(ChatServer.server_fd);
+    close(ChatServer.server_sock);
 }
 
 /* ===== Server.c용 함수 구현 ====== */
 /* 클라이언트 소켓 초기화 */
 void s_InitClientSocket() {
-    printf("s_InitClientSocket()\n");
     // 최대 클라이언트 갯수 초기값 : 50
     ChatServer.max_client = 50;
     // 최대 클라이언트 갯수만큼 할당
@@ -72,106 +43,186 @@ void s_InitClientSocket() {
 
 /* 서버 소켓 초기화 */
 void s_InitServerSocket() {
-    printf("s_InitServerSocket()\n");
-    ChatServer.server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (ChatServer.server_fd == 0) {
+    ChatServer.server_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (ChatServer.server_sock == 0) {
         perror("socket failed");
         exit(EXIT_FAILURE);
     }
 }
 
+/* 파이프 초기화 */
+void s_InitPipes() {
+    for (int i = 0; i < ChatServer.max_client; i++) {
+        if (pipe(ChatServer.pipes[i]) == -1) {
+            perror("pipe");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
 /* 서버 주소 설정 */
 void s_SetServerAddress() {
-    printf("s_SetServerAddress()\n");
     ChatServer.address.sin_family = AF_INET;
     ChatServer.address.sin_addr.s_addr = inet_addr(PI_ADDR);  // 로컬 IP
     ChatServer.address.sin_port = htons(PORT);
-    printf("server ip1 : %u\n", ChatServer.address.sin_addr.s_addr);
 
     if (inet_pton(AF_INET, PI_ADDR, &(ChatServer.address.sin_addr)) <= 0) {
         perror("Invalid address / Address not supported");
-        close(ChatServer.server_fd);
+        close(ChatServer.server_sock);
         exit(EXIT_FAILURE);
     }
 }
 
 /* 서버 소켓 바인딩 */
 void s_BindServerSocket() {
-    printf("s_BindServerSocket()\n");
-    if (bind(ChatServer.server_fd, (struct sockaddr *)&(ChatServer.address), 
+    if (bind(ChatServer.server_sock, (struct sockaddr *)&(ChatServer.address), 
         sizeof(ChatServer.address)) < 0) {
         perror("bind failed");
-        close(ChatServer.server_fd);
+        close(ChatServer.server_sock);
         exit(EXIT_FAILURE);
     }
-    printf("server ip2 : %u\n", ChatServer.address.sin_addr.s_addr);
 }
 
 /* 클라이언트 접속 대기 */
 void s_ListenClients() {
-    printf("s_ListenClients()\n");
-    if (listen(ChatServer.server_fd, ChatServer.max_client) < 0) {
+    if (listen(ChatServer.server_sock, ChatServer.max_client) < 0) {
         perror("listen failed");
-        close(ChatServer.server_fd);
+        close(ChatServer.server_sock);
         exit(EXIT_FAILURE);
     }
-    printf("Chat server started on port %d\n", PORT);
 }
 
-/* 자식 프로세스: 클라이언트 통신 처리 */    
-void s_ChildProcess(int new_socket) {
-    printf("s_ChildProcess() 1\n");
-    close(ChatServer.server_fd); // 자식 프로세스는 서버 소켓을 닫음
-
-    char buffer[BUFFER_SIZE];
-
-    while (1) {
-        printf("s_ChildProcess() 2\n");
-        // 클라이언트로부터 데이터 수신
-        int valread = read(new_socket, buffer, BUFFER_SIZE);
-        printf("s_ChildProcess() 3\n");
-        if (valread == 0) {
-            // 클라이언트 연결 종료
-            printf("Client disconnected, socket fd: %d\n", new_socket);
-            close(new_socket);
-            exit(0);
-        }
-
-        printf("s_ChildProcess() 4\n");
-        buffer[valread] = '\0';
-        printf("Received from client %d: %s\n", new_socket, buffer);
-
-        // 부모 프로세스에 메시지 전송
-        write(ChatServer.pipes[new_socket][1], buffer, strlen(buffer));
+/* 브로드캐스트용 포크 */ 
+void s_ForkForBroadCast() {
+    pid_t pid = fork();
+    if (pid < 0) { // fork 실패
+        perror("fork failed");
+        exit(EXIT_FAILURE);
+    }
+    if (pid == 0) {  // 전파용 프로세스 실행
+        s_Broadcast();
+        exit(0);
     }
 }
 
-// 부모 프로세스: 다른 클라이언트들에게 메시지 브로드캐스트
-void s_ParentProcess(int new_socket) {
-    printf("s_ParentProcess() 1\n");
-    close(new_socket); // 부모는 클라이언트 소켓을 닫음
-
-    char buffer[BUFFER_SIZE];
-
+/* 다른 클라이언트들에게 메시지 브로드캐스트 */
+void s_Broadcast() {
     // 파이프에서 메시지를 읽고 다른 클라이언트에게 전송
-    while (1) {
-        printf("s_ParentProcess - while1\n");
-        for (int i = 0; i < ChatServer.max_client; i++) {
-            printf("s_ParentProcess - while2\n");
+    for (int i = 0; i < ChatServer.max_client; i++) {
+        printf("i : %d / socket : %d\n", i, ChatServer.client_socket[i]);
+        pid_t pid = fork();
+        if(pid == 0) {
+            s_ReadAndBroad(i);
+        }        
+    }
+    exit(0); // 현재 프로세스 종료
+}
 
-            int bytes_read = read(ChatServer.pipes[i][0], buffer, BUFFER_SIZE);
-
-            if (bytes_read > 0) {
-                buffer[bytes_read] = '\0';
-                printf("Broadcasting message: %s\n", buffer);
-
-                // 다른 클라이언트들에게 메시지 브로드캐스트
-                for (int j = 0; j < ChatServer.max_client; j++) {
-                    if (ChatServer.client_socket[j] != 0 && i != j) {
-                        send(ChatServer.client_socket[j], buffer, strlen(buffer), 0);
-                    }
+void s_ReadAndBroad(int idx) {
+    char buffer[BUFFER_SIZE];
+    printf("idx - %d\n", idx);
+    while(1) {
+        int bytes_read = read(ChatServer.pipes[idx][0], buffer, BUFFER_SIZE);
+        if (bytes_read > 0) {
+            buffer[bytes_read] = '\0';
+            printf("Broadcasting message: %s\n", buffer);
+            printf("client socket: %d\n", ChatServer.client_socket[idx]);               
+            printf("i: %d\n", idx);
+            // 다른 클라이언트들에게 메시지 브로드캐스트
+            for (int i = 0; i < ChatServer.max_client; i++) {
+                if (ChatServer.client_socket[i] != 0 && idx != i) {
+                    send(ChatServer.client_socket[i], buffer, strlen(buffer), 0);
                 }
             }
         }
+    }
+}
+
+/* 클라이언트 Accept 대기 */
+void s_WaitForAccept() {
+    while (1) {
+        int new_socket = s_AcceptNewSocket();
+        int idx = s_UpdateNewSocket(new_socket);   
+        s_ForkForClientMessage(idx);
+    }
+}
+
+/* 클라이언트 Accept. new_socket 반환 */
+int s_AcceptNewSocket() {
+    int addrlen = sizeof(ChatServer.address);
+    struct sockaddr client_addr;
+    int new_socket = accept(ChatServer.server_sock, 
+        (struct sockaddr*)&(client_addr), (socklen_t*)&addrlen);
+
+    if (new_socket < 0) {
+        perror("accept failed");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("클라이언트 접속, socket fd: %d\n", new_socket);        
+
+    return new_socket;
+}
+
+/* new_socket을 빈 파이프에 위치. 해당 인덱스 반환 */
+int s_UpdateNewSocket(int new_socket) {
+    int idx = -1;
+    for(int i = 0; i < ChatServer.max_client; i++) {
+        if(ChatServer.client_socket[i] == 0) {
+            ChatServer.client_socket[i] = new_socket;
+            idx = i;
+            break;
+        }
+    }
+    
+    if(idx == -1) {
+        printf("idx Error\n");
+        exit(1);
+    }
+    return idx;
+}
+
+/* 인덱스에 해당하는 클라이언트의 메시지 수신 */
+void s_ForkForClientMessage(int idx) {
+    pid_t pid = fork();
+    if (pid == 0) { 
+        s_GetMessageFromClient(idx); // 클라이언트 : 메시지 수신
+        exit(0);
+    } 
+}
+
+/* 클라이언트에서 메시지 받기 */    
+void s_GetMessageFromClient(int idx) {
+    close(ChatServer.server_sock); 
+//    close(ChatServer.pipes[idx][0]); // 읽기 소켓 닫기
+    char buffer[BUFFER_SIZE];
+
+    while (1) {
+        // 클라이언트로부터 데이터 수신
+        int valread = read(ChatServer.client_socket[idx], buffer, BUFFER_SIZE);
+        if (valread == 0) {
+            // 클라이언트 연결 종료
+            printf("Client disconnected, socket fd: %d\n", ChatServer.client_socket[idx]);
+            close(ChatServer.client_socket[idx]);
+            ChatServer.client_socket[idx] = 0;
+            exit(0);
+        }
+        buffer[valread] = '\0';
+        // 부모 프로세스에 메시지 전송
+        write(ChatServer.pipes[idx][1], buffer, strlen(buffer));
+    }
+    exit(0); // 프로세스 종료
+}
+
+/* 해당 소켓/파이프를 논블락으로 만들기 */
+void s_MakeNonblock(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1) {
+        perror("fcntl");
+        exit(1);
+    }
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl");
+        exit(1);
     }
 }
