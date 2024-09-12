@@ -12,7 +12,7 @@
 typedef struct client {
     int sockfd;
     int pipefd[2];
-    char id[ID_SIZE], buffer[BUFFER_SIZE];
+    char id[ID_SIZE];
     struct sockaddr_in server_addr;
 } Client;
 
@@ -35,5 +35,5 @@ void c_ChildProcess(); // 자식 프로세스: 사용자 입력을 처리
 void c_ParentProcess(); // 부모 프로세스: 서버와의 통신 처리
 
 
-void c_SetBuffer(char* chat); // "ID : (채팅 내용)"양식으로 버퍼 업데이트
+// void c_SetBuffer(char* chat); // "ID : (채팅 내용)"양식으로 버퍼 업데이트
 #endif

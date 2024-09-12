@@ -3,9 +3,9 @@
 
 /* 클라이언트인지 서버인지 구분 */
 #define CLIENT_MODE
-// #define SERVER_MODE
+#define SERVER_MODE
 
-/* 포트 번호 고정 */
+/* 포트 번호 고정 */ 
 #define PORT 5100
 
 /* 라즈베리파이 주소 */
