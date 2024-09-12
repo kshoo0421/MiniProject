@@ -125,7 +125,8 @@ void c_ParentProcess(int pipefd[2], char* buffer) {
     while (1) {
         // 파이프에서 사용자 입력 읽기
         memset(buffer, 0, BUFFER_SIZE);
-        int bytes_read = read(pipefd[0], buffer, BUFFER_SIZE);
+        int bytes_read = read(pipefd[0], buffer, BUFFER_SIZE - strlen(User.id) - 5);
+        // id 칸 확보
         if (bytes_read > 0) {
             buffer[bytes_read] = '\0';
             // "exit" 메시지를 받으면 종료
@@ -133,6 +134,7 @@ void c_ParentProcess(int pipefd[2], char* buffer) {
                 break;
             }
             // 서버에 메시지 전송
+            c_AddId(buffer);
             send(User.sockfd, buffer, strlen(buffer), 0);
         }
 
@@ -141,7 +143,7 @@ void c_ParentProcess(int pipefd[2], char* buffer) {
         int valread = read(User.sockfd, buffer, BUFFER_SIZE);
         if (valread > 0) {
             buffer[valread] = '\0';
-            printf("server : %s\n", buffer);
+            printf("%s\n", buffer);
         }
     }
     close(pipefd[0]);
@@ -157,4 +159,12 @@ void c_MakeNonblock(int fd) {
         perror("fcntl");
         exit(1);
     }
+}
+
+void c_AddId(char buffer[BUFFER_SIZE]) {
+    char newBuffer[BUFFER_SIZE] = "[";
+    strcat(newBuffer, User.id);
+    strcat(newBuffer, "] : ");
+    strcat(newBuffer, buffer);
+    strcpy(buffer, newBuffer);
 }

@@ -33,6 +33,6 @@ void c_ConnectToServer(); // 서버 연결
 void c_ChildProcess(int pipefd[2], char* buffer); // 자식 프로세스: 사용자 입력을 처리
 void c_ParentProcess(int pipefd[2], char* buffer); // 부모 프로세스: 서버와의 통신 처리
 void c_MakeNonblock(int fd);
-
+void c_AddId(char buffer[BUFFER_SIZE]);
 // void c_SetBuffer(char* chat); // "ID : (채팅 내용)"양식으로 버퍼 업데이트
 #endif
