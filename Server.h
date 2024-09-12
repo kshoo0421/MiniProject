@@ -32,7 +32,6 @@ void s_ListenClients(); // 클라이언트 접속 대기
 void s_GetMessageFromClient(int idx);
 void s_ForkForBroadCast();
 void s_Broadcast();
-void s_WaitForAccept();
 int s_AcceptNewSocket();
 int s_UpdateNewSocket(int new_socket);
 void s_ForkForClientMessage(int idx);
