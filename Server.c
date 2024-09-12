@@ -92,6 +92,12 @@ void s_ListenClients() {
 }
 
 void s_ReadAndBroad(int idx) {
+    pid_t pid = fork();
+    if (pid == 0) { 
+        s_GetMessageFromClient(idx); // 클라이언트 : 메시지 수신
+        exit(0);
+    }
+
     char buffer[BUFFER_SIZE];
     while(1) {
         if(ChatServer.client_socket[idx] == 0) {
@@ -119,7 +125,7 @@ void s_WaitForAccept() {
         int new_socket = s_AcceptNewSocket();
         printf("new_socket1 : %d\n", new_socket);
 
-        int idx = s_UpdateNewSocket(new_socket);   
+        int idx = s_UpdateNewSocket(new_socket);
         s_ForkForClientMessage(idx);
     }
 }
@@ -135,8 +141,7 @@ int s_AcceptNewSocket() {
         exit(EXIT_FAILURE);
     }
 
-    printf("클라이언트 접속, socket fd: %d\n", new_socket);        
-
+    printf("클라이언트 접속, socket fd: %d\n", new_socket);
     return new_socket;
 }
 
@@ -164,17 +169,18 @@ void s_ForkForClientMessage(int idx) {
         s_ReadAndBroad(idx);
         exit(0);
     }
+    /*
     pid = fork();
     if (pid == 0) { 
         s_GetMessageFromClient(idx); // 클라이언트 : 메시지 수신
         exit(0);
     }
+    */
 }
 
 /* 클라이언트에서 메시지 받기 */    
 void s_GetMessageFromClient(int idx) {
     close(ChatServer.server_sock); 
-//    close(ChatServer.pipes[idx][0]); // 읽기 소켓 닫기
     char buffer[BUFFER_SIZE];
 
     while (1) {
@@ -190,7 +196,6 @@ void s_GetMessageFromClient(int idx) {
         buffer[valread] = '\0';
         // 부모 프로세스에 메시지 전송
         write(ChatServer.pipes[idx][1], buffer, strlen(buffer));
-        printf("idx == %d\n", idx);
     }
     exit(0); // 프로세스 종료
 }
