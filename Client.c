@@ -7,18 +7,19 @@
 #include "Client.h"
 
 /* ===== main.c용 함수 구현 ===== */
-/* 클라이언트 초기화 */
+/* 1. 클라이언트 초기화 */
 void C_init() {
     c_SetUserId(); // 사용자 ID 설정
-}
-
-/* 클라이언트를 서버에 연결 요청. 연결 실패 시 종료 */
-void C_Connect() {
     c_InitClientSocket();
     c_SetServerAddress();
+}
+
+/* 2. 서버 연결 */
+void C_Connect() {
     c_ConnectToServer();
 }
 
+/* 3. 클라이언트 서비스 */
 void C_ClientService() {
     int pipefd[2];
     if (pipe(pipefd) == -1) {
@@ -43,13 +44,14 @@ void C_ClientService() {
     }
 }
 
-/* 클라이언트-서버 연결 끊기 */
+/* 4. 클라이언트 종료 */
 void C_Close() {
     close(User.sockfd);
 }
 
 
 /* ===== 내부 함수 구현 ===== */
+/* === 1. C_init() : 클라이언트 초기화 === */
 /* 사용자 ID 설정 */
 void c_SetUserId() { 
     printf("채팅에 사용할 ID를 입력하세요(최대 20글자) : ");
@@ -82,7 +84,9 @@ void c_SetServerAddress() {
     }
 }
 
-/* 서버 연결 */
+
+/* 2. C_Connect() : 서버 연결 */
+/* 2-(1) 서버 연결 */
 void c_ConnectToServer() {
     if (connect(User.sockfd, (struct sockaddr *)&(User.server_addr), 
     sizeof(User.server_addr)) < 0) {
@@ -93,7 +97,8 @@ void c_ConnectToServer() {
     printf("서버에 연결되었습니다.\n");
 }
 
-/* 자식 프로세스: 사용자 입력을 처리 */
+/* 3. C_ClientService() : 클라이언트 서비스*/
+/* 3-(1) 자식 프로세스: 사용자 입력을 처리 */
 void c_ChildProcess(int pipefd[2], char* buffer) {
     close(pipefd[0]);  // 자식은 읽기 파이프를 닫음
 
@@ -116,7 +121,7 @@ void c_ChildProcess(int pipefd[2], char* buffer) {
     exit(0);
 }
 
-/* 부모 프로세스: 서버와의 통신 처리 */
+/* 3-(2) 부모 프로세스: 서버와의 통신 처리 */
 void c_ParentProcess(int pipefd[2], char* buffer) {
     close(pipefd[1]);  // 부모는 쓰기 파이프를 닫음
     c_MakeNonblock(pipefd[0]);
@@ -149,6 +154,9 @@ void c_ParentProcess(int pipefd[2], char* buffer) {
     close(pipefd[0]);
 }
 
+
+/* 추가 내부 함수 : 3-(2) */
+/* 3-(2)-[1] 해당 fd를 non-block으로 만듦 */
 void c_MakeNonblock(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1) {
@@ -161,6 +169,7 @@ void c_MakeNonblock(int fd) {
     }
 }
 
+/* 3-(2)-[2] 송신하는 내용 앞에 id 추가 */
 void c_AddId(char buffer[BUFFER_SIZE]) {
     char newBuffer[BUFFER_SIZE] = "[";
     strcat(newBuffer, User.id);

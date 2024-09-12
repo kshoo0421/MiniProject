@@ -17,24 +17,27 @@ typedef struct server {
 static Server ChatServer;
 
 /* main.c용 함수. S_로 시작 */
-void S_Init();          // 서버 초기화
-void S_ServerService(); // 서버 운영
-void S_Close();         // 서버 종료
+void S_Init();          // 1. 서버 초기화
+void S_ServerService(); // 2. 서버 운영
+void S_Close();         // 3. 서버 종료
 
 /* Server.c용 함수 선언. s_로 시작*/
-void s_InitClientSocket(); // 클라이언트 소켓 초기화
-void s_InitServerSocket(); // 서버 소켓 초기화
-void s_InitPipes();
-void s_SetServerAddress(); // 서버 주소 설정
-void s_BindServerSocket(); // 서버 소켓 바인딩
+/* 1. S_Init() : 서버 초기화 */
+void s_InitServerSocket();  // (1) 서버 소켓 초기화
+void s_SetServerAddress();  // (2) 서버 주소 설정
+void s_BindServerSocket();  // (3) 서버 주소 - 서버 소켓 연결
+void s_InitClientSocket();  // (4) 클라이언트용 소켓 초기화
+void s_InitPipes();         // (5) 파이프들 초기화
+void s_ListenClients();     // (6) 클라이언트 Listen 등록
 
-void s_ListenClients(); // 클라이언트 접속 대기
-void s_GetMessageFromClient(int idx);
-void s_ForkForBroadCast();
-void s_Broadcast();
-int s_AcceptNewSocket();
-int s_UpdateNewSocket(int new_socket);
-void s_ForkForClientMessage(int idx);
-void s_MakeNonblock(int fd);
-void s_ReadAndBroad(int idx);
+/* 2. S_ServerService() : 서버 운영 */
+int s_AcceptNewSocket();                // (1) 새 소켓 받아오기
+int s_UpdateNewSocket(int new_socket);  // (2) 새 소켓을 서버의 클라이언트 소켓에 등록
+void s_ForkForClientMessage(int idx);   // (3) 해당 클라이언트의 메세지를 받는 프로세스 fork()
+void s_Broadcast();                     // (4) 수신된 메시지 확인 후 배포
+
+
+/* 내부 추가 함수 */
+void s_MakeNonblock(int fd);            // 1-(1)-[1] 해당 소켓/파이프를 논블락으로 만들기
+void s_GetMessageFromClient(int idx);   // 2-(3)-[1] 클라이언트에서 메시지 받기
 #endif
