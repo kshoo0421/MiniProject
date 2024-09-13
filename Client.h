@@ -48,4 +48,6 @@ void c_SignUp(char buffer[BUFFER_SIZE], char id[20], char pw[20]);
 void c_SignOut(char buffer[BUFFER_SIZE], char id[20], char pw[20]);
 
 void c_ClearInputBuffer();
+void c_HideLetters();
+void c_ShowLetters();
 #endif

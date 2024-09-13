@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h> // non-blocking
+#include <sys/wait.h>
 #include "Server.h"
 
 /* ===== main.c용 함수 구현 ====== */
@@ -20,6 +21,7 @@ void S_Init() {
 
 /* 2. 서버 운영 */
 void S_ServerService() {
+    s_SetSaHandler(); // 자식 프로세스 종료 시 자동 회수
     while(1) {
         int new_socket = s_AcceptNewSocket();
         if(new_socket > 0) {    // 새 소켓 받아오기 성공 시
@@ -120,6 +122,14 @@ void s_ListenClients() {
 
 
 /* === 2. S_ServerService() : 서버 운영 === */
+void s_SetSaHandler() {
+    // SIGCHLD 시그널을 처리할 핸들러 설정
+    struct sigaction sa;
+    sa.sa_handler = &s_handle_sigchld;
+    sa.sa_flags = SA_RESTART;  // 중단된 시스템 호출 재시작
+    sigaction(SIGCHLD, &sa, NULL);
+}
+
 /* 2-(1) 새 소켓 받아오기 */
 int s_AcceptNewSocket() {
     int addrlen = sizeof(ChatServer.address);
@@ -154,7 +164,6 @@ void s_ForkForClientMessage(int idx) {
     pid_t pid = fork();
     if (pid == 0) { 
         s_GetMessageFromClient(idx); // 클라이언트 : 메시지 수신
-        exit(0);
     }
 }
 
@@ -279,3 +288,15 @@ void s_GetMessageFromClient(int idx) {
     }
     exit(0); // 프로세스 종료
 }
+
+// SIGCHLD 핸들러: 자식 프로세스 종료 시 호출
+void handle_sigchld(int sig) {
+    int status;
+    pid_t pid;
+
+    // 종료된 모든 자식 프로세스 회수
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        printf("Collected child process (PID: %d), exit status: %d\n", pid, WEXITSTATUS(status));
+    }
+}
+

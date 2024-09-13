@@ -44,4 +44,7 @@ void s_Broadcast();                     // (4) 수신된 메시지 확인 후 �
 /* 내부 추가 함수 */
 void s_MakeNonblock(int fd);            // 1-(1)-[1] 해당 소켓/파이프를 논블락으로 만들기
 void s_GetMessageFromClient(int idx);   // 2-(3)-[1] 클라이언트에서 메시지 받기
+void s_handle_sigchld(int sig);
+void s_SetSaHandler();
+
 #endif

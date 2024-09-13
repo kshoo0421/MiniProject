@@ -3,7 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h> // non-blocking
-
+#include <termios.h> // 글자 숨기기용
 #include "Client.h"
 
 /* ===== main.c용 함수 구현 ===== */
@@ -120,8 +120,11 @@ void c_ChildProcess(int pipefd[2], int pipe2[2], char* buffer) {
                 User.id[strcspn(User.id, "\n")] = '\0'; // 줄바꿈 제거
 
                 printf("PW(20자 이내) : ");
+                c_HideLetters();
                 fgets(User.pw, PW_SIZE, stdin);
                 User.pw[strcspn(User.pw, "\n")] = '\0'; // 줄바꿈 제거
+                c_ShowLetters();
+                printf("\n");
 
                 c_SignIn(buffer, User.id, User.pw);
                 write(pipefd[1], buffer, strlen(buffer));
@@ -142,8 +145,11 @@ void c_ChildProcess(int pipefd[2], int pipe2[2], char* buffer) {
                 User.id[strcspn(User.id, "\n")] = '\0';
 
                 printf("PW(20자 이내) : ");
+                c_HideLetters();
                 fgets(User.pw, PW_SIZE, stdin);
                 User.pw[strcspn(User.pw, "\n")] = '\0';
+                c_ShowLetters();
+                printf("\n");
 
                 c_SignUp(buffer, User.id, User.pw);
                 write(pipefd[1], buffer, strlen(buffer));
@@ -326,4 +332,18 @@ void c_ClearInputBuffer() {
     int c; // getchar()로 입력 버퍼에 남은 모든 문자를 읽기
     // 아무것도 하지 않음, 남은 데이터를 무시    
     while ((c = getchar()) != '\n' && c != EOF);
+}
+
+void c_HideLetters() {
+    struct termios tty;
+    tcgetattr(STDIN_FILENO, &tty);  // 현재 터미널 속성 가져오기
+    tty.c_lflag &= ~ECHO;           // ECHO 비트 해제: 입력된 문자 표시 안 함
+    tcsetattr(STDIN_FILENO, TCSANOW, &tty);  // 변경된 속성 즉시 적용
+}
+
+void c_ShowLetters() {
+    struct termios tty;
+    tcgetattr(STDIN_FILENO, &tty);  // 현재 터미널 속성 가져오기
+    tty.c_lflag |= ECHO;            // ECHO 비트 설정: 입력된 문자 표시
+    tcsetattr(STDIN_FILENO, TCSANOW, &tty);  // 변경된 속성 즉시 적용
 }
