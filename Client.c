@@ -87,67 +87,6 @@ void c_ConnectToServer() {
 }
 
 /* 3. C_ClientService() : 클라이언트 서비스*/
-
-void c_LoginSystem(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]) {
-    printf("[로그인 시스템]\n");
-    printf("1 : 로그인\n");
-    printf("2 : 회원가입\n");
-    printf("> ");
-
-    memset(buffer, 0, BUFFER_SIZE); 
-    fgets(buffer, BUFFER_SIZE, stdin);
-    buffer[strcspn(buffer, "\n")] = '\0'; // 줄바꿈 제거
-
-    if(strcmp(buffer, "1") == 0) {
-        printf("ID(20자 이내) : ");
-        fgets(User.id, ID_SIZE, stdin);
-        User.id[strcspn(User.id, "\n")] = '\0'; // 줄바꿈 제거
-
-        printf("PW(20자 이내) : ");
-        c_HideLetters();
-        fgets(User.pw, PW_SIZE, stdin);
-        User.pw[strcspn(User.pw, "\n")] = '\0'; // 줄바꿈 제거
-        c_ShowLetters();
-        printf("\n");
-
-        c_SignIn(buffer, User.id, User.pw);
-        write(pipe1[1], buffer, strlen(buffer));
-
-        printf("로그인 시도 중입니다.\n");
-
-        int bytes_read = read(pipe2[0], buffer, BUFFER_SIZE);
-        if (bytes_read > 0) {
-            buffer[bytes_read] = '\0';
-            if (strcmp(buffer, SIGNIN_SUCCESS) == 0) {
-                User.isLoginned = 1;
-            }
-        }
-    }
-    else if(strcmp(buffer, "2") == 0) {
-        printf("ID(20자 이내) : ");
-        fgets(User.id, ID_SIZE, stdin);
-        User.id[strcspn(User.id, "\n")] = '\0';
-
-        printf("PW(20자 이내) : ");
-        c_HideLetters();
-        fgets(User.pw, PW_SIZE, stdin);
-        User.pw[strcspn(User.pw, "\n")] = '\0';
-        c_ShowLetters();
-        printf("\n");
-
-        c_SignUp(buffer, User.id, User.pw);
-        write(pipe1[1], buffer, strlen(buffer));
-        memset(buffer, 0, BUFFER_SIZE);
-        printf("회원가입 중입니다.\n");
-        
-        int bytes_read = read(pipe2[0], buffer, BUFFER_SIZE);
-    }
-    else {
-        printf("잘못된 값을 입력했습니다.\n");
-        printf("다시 입력해주세요.\n");
-    }
-}
-
 /* 3-(1) 자식 프로세스: 사용자 입력을 처리 */
 void c_ChildProcess(int pipe1[2], int pipe2[2], char* buffer) {
     close(pipe1[0]);  // 부모용 읽기 파이프를 닫음
@@ -185,50 +124,6 @@ void c_ChildProcess(int pipe1[2], int pipe2[2], char* buffer) {
     exit(0);
 }
 
-void c_LoginCommunication(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]) {
-    memset(buffer, 0, BUFFER_SIZE);
-    int bytes_read = read(pipe1[0], buffer, BUFFER_SIZE);
-    if (bytes_read > 0) {
-        buffer[bytes_read] = '\0';
-
-        if (strcmp(buffer, "exit") == 0) {
-            printf("프로그램을 종료합니다.\n");
-            exit(0);
-        }
-        send(User.sockfd, buffer, strlen(buffer), 0);
-    }
-    
-    memset(buffer, 0, BUFFER_SIZE);
-    int valread = read(User.sockfd, buffer, BUFFER_SIZE);
-    if (valread > 0) {
-        buffer[valread] = '\0';
-        if(strcmp(buffer, SIGNIN_FAILED) == 0) {
-            printf("로그인에 실패했습니다.\n");
-            printf("다시 시도해주세요.\n");
-        }
-        else if(strcmp(buffer, SIGNIN_SUCCESS) == 0) {
-            printf("로그인에 성공했습니다.\n");
-            User.isLoginned = 1;
-        }
-        else if(strcmp(buffer, SIGNUP_FAILED) == 0) {
-            printf("회원가입에 실패했습니다.\n");
-            printf("다시 시도해주세요.\n");
-        }
-        else if(strcmp(buffer, SIGNUP_SUCCESS) == 0) {
-            printf("회원가입에 성공했습니다.\n");
-            printf("로그인해주세요.\n");
-        }
-        else if(strcmp(buffer, SIGNOUT_FAILED) == 0) {
-            printf("로그아웃에 실패했습니다.\n");
-            printf("다시 시도해주세요.\n");
-        }
-        else if(strcmp(buffer, SIGNUP_SUCCESS) == 0) {
-            printf("로그아웃에 성공했습니다.\n");
-            printf("로그인해주세요.\n");
-        }
-        write(pipe2[1], buffer, strlen(buffer));
-    }
-}
 
 int c_ReadUserInput(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]) {
     memset(buffer, 0, BUFFER_SIZE);
@@ -312,6 +207,7 @@ void c_AddId(char buffer[BUFFER_SIZE]) {
     strcpy(buffer, newBuffer);
 }
 
+/* 로그인용 양식 변경 */
 void c_SignIn(char buffer[BUFFER_SIZE], char id[20], char pw[20]) {
     strcpy(buffer, "SI:");
     strcat(buffer, id);
@@ -319,6 +215,7 @@ void c_SignIn(char buffer[BUFFER_SIZE], char id[20], char pw[20]) {
     strcat(buffer, pw);
 }
 
+/* 회원가입용 양식 변경 */
 void c_SignUp(char buffer[BUFFER_SIZE], char id[20], char pw[20]) {
     strcpy(buffer, "SU:");
     strcat(buffer, id);
@@ -326,6 +223,7 @@ void c_SignUp(char buffer[BUFFER_SIZE], char id[20], char pw[20]) {
     strcat(buffer, pw);
 }
 
+/* 로그아웃용 양식 변경 */
 void c_SignOut(char buffer[BUFFER_SIZE], char id[20], char pw[20]) {
     strcpy(buffer, "SO:");
     strcat(buffer, id);
@@ -333,12 +231,14 @@ void c_SignOut(char buffer[BUFFER_SIZE], char id[20], char pw[20]) {
     strcat(buffer, pw);
 }
 
+/* 입력 버퍼 지우기 */
 void c_ClearInputBuffer() {
     int c; // getchar()로 입력 버퍼에 남은 모든 문자를 읽기
     // 아무것도 하지 않음, 남은 데이터를 무시    
     while ((c = getchar()) != '\n' && c != EOF);
 }
 
+/* 글자 숨기기 */
 void c_HideLetters() {
     struct termios tty;
     tcgetattr(STDIN_FILENO, &tty);  // 현재 터미널 속성 가져오기
@@ -346,6 +246,7 @@ void c_HideLetters() {
     tcsetattr(STDIN_FILENO, TCSANOW, &tty);  // 변경된 속성 즉시 적용
 }
 
+/* 글자 보이기 */
 void c_ShowLetters() {
     struct termios tty;
     tcgetattr(STDIN_FILENO, &tty);  // 현재 터미널 속성 가져오기
@@ -353,9 +254,117 @@ void c_ShowLetters() {
     tcsetattr(STDIN_FILENO, TCSANOW, &tty);  // 변경된 속성 즉시 적용
 }
 
+/* 파이프 연결 + 예외처리 */
 void c_ConnectPipe(int pipefd[2]) {
     if (pipe(pipefd) == -1) {
         perror("pipe");
         exit(EXIT_FAILURE);
+    }
+}
+
+/* 자식프로세스용 로그인시스템 - 입력 */
+void c_LoginSystem(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]) {
+    printf("[로그인 시스템]\n");
+    printf("1 : 로그인\n");
+    printf("2 : 회원가입\n");
+    printf("> ");
+
+    memset(buffer, 0, BUFFER_SIZE); 
+    fgets(buffer, BUFFER_SIZE, stdin);
+    buffer[strcspn(buffer, "\n")] = '\0'; // 줄바꿈 제거
+
+    if(strcmp(buffer, "1") == 0) {
+        printf("ID(20자 이내) : ");
+        fgets(User.id, ID_SIZE, stdin);
+        User.id[strcspn(User.id, "\n")] = '\0'; // 줄바꿈 제거
+
+        printf("PW(20자 이내) : ");
+        c_HideLetters();
+        fgets(User.pw, PW_SIZE, stdin);
+        User.pw[strcspn(User.pw, "\n")] = '\0'; // 줄바꿈 제거
+        c_ShowLetters();
+        printf("\n");
+
+        c_SignIn(buffer, User.id, User.pw);
+        write(pipe1[1], buffer, strlen(buffer));
+
+        printf("로그인 시도 중입니다.\n");
+
+        int bytes_read = read(pipe2[0], buffer, BUFFER_SIZE);
+        if (bytes_read > 0) {
+            buffer[bytes_read] = '\0';
+            if (strcmp(buffer, SIGNIN_SUCCESS) == 0) {
+                User.isLoginned = 1;
+            }
+        }
+    }
+    else if(strcmp(buffer, "2") == 0) {
+        printf("ID(20자 이내) : ");
+        fgets(User.id, ID_SIZE, stdin);
+        User.id[strcspn(User.id, "\n")] = '\0';
+
+        printf("PW(20자 이내) : ");
+        c_HideLetters();
+        fgets(User.pw, PW_SIZE, stdin);
+        User.pw[strcspn(User.pw, "\n")] = '\0';
+        c_ShowLetters();
+        printf("\n");
+
+        c_SignUp(buffer, User.id, User.pw);
+        write(pipe1[1], buffer, strlen(buffer));
+        memset(buffer, 0, BUFFER_SIZE);
+        printf("회원가입 중입니다.\n");
+        
+        int bytes_read = read(pipe2[0], buffer, BUFFER_SIZE);
+    }
+    else {
+        printf("잘못된 값을 입력했습니다.\n");
+        printf("다시 입력해주세요.\n");
+    }
+}
+
+/* 로그인시스템 통신용(부모) */
+void c_LoginCommunication(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]) {
+    memset(buffer, 0, BUFFER_SIZE);
+    int bytes_read = read(pipe1[0], buffer, BUFFER_SIZE);
+    if (bytes_read > 0) {
+        buffer[bytes_read] = '\0';
+
+        if (strcmp(buffer, "exit") == 0) {
+            printf("프로그램을 종료합니다.\n");
+            exit(0);
+        }
+        send(User.sockfd, buffer, strlen(buffer), 0);
+    }
+    
+    memset(buffer, 0, BUFFER_SIZE);
+    int valread = read(User.sockfd, buffer, BUFFER_SIZE);
+    if (valread > 0) {
+        buffer[valread] = '\0';
+        if(strcmp(buffer, SIGNIN_FAILED) == 0) {
+            printf("로그인에 실패했습니다.\n");
+            printf("다시 시도해주세요.\n");
+        }
+        else if(strcmp(buffer, SIGNIN_SUCCESS) == 0) {
+            printf("로그인에 성공했습니다.\n");
+            User.isLoginned = 1;
+        }
+        else if(strcmp(buffer, SIGNUP_FAILED) == 0) {
+            printf("회원가입에 실패했습니다.\n");
+            printf("다시 시도해주세요.\n");
+        }
+        else if(strcmp(buffer, SIGNUP_SUCCESS) == 0) {
+            printf("회원가입에 성공했습니다.\n");
+            printf("로그인해주세요.\n");
+        }
+        else if(strcmp(buffer, SIGNOUT_FAILED) == 0) {
+            printf("로그아웃에 실패했습니다.\n");
+            printf("다시 시도해주세요.\n");
+        }
+        else if(strcmp(buffer, SIGNUP_SUCCESS) == 0) {
+            printf("로그아웃에 성공했습니다.\n");
+            printf("로그인해주세요.\n");
+        }
+        write(pipe2[1], buffer, strlen(buffer));
     }
 }

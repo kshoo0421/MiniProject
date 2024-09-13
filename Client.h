@@ -43,16 +43,18 @@ void c_ParentProcess(int pipe1[2], int pipe2[2], char* buffer);
 /* 추가 내부 함수 : 3-(2) */
 void c_MakeNonblock(int fd);            // [1] 해당 fd를 non-block으로 만듦
 void c_AddId(char buffer[BUFFER_SIZE]); // [2] 송신하는 내용 앞에 id 추가
-void c_SignIn(char buffer[BUFFER_SIZE], char id[20], char pw[20]);
-void c_SignUp(char buffer[BUFFER_SIZE], char id[20], char pw[20]);
-void c_SignOut(char buffer[BUFFER_SIZE], char id[20], char pw[20]);
 
-void c_ClearInputBuffer();
-void c_HideLetters();
-void c_ShowLetters();
-void c_ConnectPipe(int pipefd[2]);
-void c_LoginSystem(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]);
-void c_LoginCommunication(int pipe1[2], int pipe[2], char buffer[BUFFER_SIZE]);
-int c_ReadUserInput(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]);
-void c_ReceiveMessageFromServer(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]);
+/* 코드 정리하며 추가 */
+void c_SignIn(char buffer[BUFFER_SIZE], char id[20], char pw[20]);  // 로그인용 양식 변경
+void c_SignUp(char buffer[BUFFER_SIZE], char id[20], char pw[20]);  // 회원가입용 양식 변경
+void c_SignOut(char buffer[BUFFER_SIZE], char id[20], char pw[20]); // 로그아웃용 양식 변경
+
+void c_ClearInputBuffer();  // 버퍼 비우기
+void c_HideLetters();   // 글자 숨기기
+void c_ShowLetters();   // 글자 드러내기
+void c_ConnectPipe(int pipefd[2]);  // 파이프 연결하기 + 오류 처리
+void c_LoginSystem(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]); // 자식프로세스용 로그인시스템
+void c_LoginCommunication(int pipe1[2], int pipe[2], char buffer[BUFFER_SIZE]); // 로그인시스템 통신용(부모)
+int c_ReadUserInput(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]);  // 사용자 입력 받기
+void c_ReceiveMessageFromServer(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]);  // 서버로부터 메시지 받기
 #endif

@@ -38,7 +38,6 @@ void S_Close() {
 }
 
 /* ===== Server.c용 함수 구현 ====== */
-
 void s_InitMembers() {
     ChatServer.cur_mem = 0;
     for(int i = 0; i < MAX_CLIENT; i++) {
@@ -47,8 +46,8 @@ void s_InitMembers() {
     }
 }
 
-
 /* === 1. S_Init() : 서버 초기화 === */
+/* 1-(1) 데몬 만들기 */
 void s_MakeDaemon() {
     pid_t pid;
     if((pid = fork()) < 0) {
@@ -120,17 +119,17 @@ void s_ListenClients() {
     }
 }
 
-
 /* === 2. S_ServerService() : 서버 운영 === */
+/* 2-(1) 핸들러 추가 */
 void s_SetSaHandler() {
     // SIGCHLD 시그널을 처리할 핸들러 설정
     struct sigaction sa;
-    sa.sa_handler = &s_handle_sigchld;
+    sa.sa_handler = &s_HandleSigchld;
     sa.sa_flags = SA_RESTART;  // 중단된 시스템 호출 재시작
     sigaction(SIGCHLD, &sa, NULL);
 }
 
-/* 2-(1) 새 소켓 받아오기 */
+/* 2-(2) 새 소켓 받아오기 */
 int s_AcceptNewSocket() {
     int addrlen = sizeof(ChatServer.address);
     struct sockaddr client_addr;
@@ -142,7 +141,7 @@ int s_AcceptNewSocket() {
     return new_socket;
 }
 
-/* 2-(2) 새 소켓을 서버의 클라이언트 소켓에 등록 */
+/* 2-(3) 새 소켓을 서버의 클라이언트 소켓에 등록 */
 int s_UpdateNewSocket(int new_socket) {
     int idx = -1;
     for(int i = 0; i < MAX_CLIENT; i++) {
@@ -159,7 +158,7 @@ int s_UpdateNewSocket(int new_socket) {
     return idx;
 }
 
-/* 2-(3) 해당 클라이언트의 메세지를 받는 프로세스 fork() */
+/* 2-(4) 해당 클라이언트의 메세지를 받는 프로세스 fork() */
 void s_ForkForClientMessage(int idx) {
     pid_t pid = fork();
     if (pid == 0) { 
@@ -167,7 +166,7 @@ void s_ForkForClientMessage(int idx) {
     }
 }
 
-/* 2-(4) 수신된 메시지 확인 후 배포 */
+/* 2-(5) 수신된 메시지 확인 후 배포 */
 void s_Broadcast() {
     char buffer[BUFFER_SIZE];
     memset(buffer, 0, sizeof(buffer));
@@ -181,8 +180,9 @@ void s_Broadcast() {
             buffer[bytes_read] = '\0';
             if(buffer[0] == '\0') continue;
             else if(buffer[0] == 'S') { // 로그인 관련
-                if(buffer[1] == 'I') {
-                    int idx = -1;
+                if(buffer[1] == 'I') {  // Sign In
+                    int idx = -1;   // 초기값 : -1
+                    // 데이터 찾기
                     for(int i = 0; i < ChatServer.cur_mem; i++) {
                         if(strcmp(buffer, ChatServer.IDPW[i]) == 0) {
                             if(ChatServer.loginned[i] == 0) {
@@ -199,9 +199,10 @@ void s_Broadcast() {
                         strcpy(buffer, SIGNIN_FAILED); // 로그인 실패
                     }
                 }
-                else if(buffer[1] == 'U') {
-                    buffer[1] = 'I';
-                    int idx = -1;
+                else if(buffer[1] == 'U') { // Sign Up
+                    buffer[1] = 'I';    // 검색 위해 변경
+                    int idx = -1; // 초기값 : -1
+                    // 데이터 찾기
                     for(int i = 0; i < ChatServer.cur_mem; i++) {
                         if(strcmp(buffer, ChatServer.IDPW[i]) == 0) {
                             idx = i;
@@ -216,9 +217,10 @@ void s_Broadcast() {
                         strcpy(buffer, SIGNUP_SUCCESS); // 회원가입 성공
                     }
                 }
-                else if(buffer[1] == 'O') { // 로그아웃
-                    buffer[1] = 'I';
+                else if(buffer[1] == 'O') { // Sign Out
+                    buffer[1] = 'I';    // 검색 위해 변경
                     int idx = -1;
+                    // 데이터 찾기
                     for(int i = 0; i < ChatServer.cur_mem; i++) {
                         if(strcmp(buffer, ChatServer.IDPW[i]) == 0) {
                             if(ChatServer.loginned[i] == 1) {
@@ -237,7 +239,7 @@ void s_Broadcast() {
                 }
                 send(ChatServer.client_socket[i], buffer, strlen(buffer), 0);
             }
-            else { // if(buffer[0] == '[') 
+            else {
                 printf("Broadcasting message: %s\n", buffer);
                 // 다른 클라이언트들에게 메시지 브로드캐스트
                 for (int j = 0; j < MAX_CLIENT; j++) {
@@ -251,7 +253,19 @@ void s_Broadcast() {
 }
 
 /* === 내부 추가 함수 === */
-/* 1-(1)-[1] 해당 소켓/파이프를 논블락으로 만들기 */
+/* 1-[1] SIGCHLD 핸들러: 자식 프로세스 종료 시 호출 */
+void s_HandleSigchld(int sig) {
+    int status;
+    pid_t pid;
+
+    // 종료된 모든 자식 프로세스 회수
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        printf("자식 프로세스 회수(PID: %d), \
+            종료 상태: %d\n", pid, WEXITSTATUS(status));
+    }
+}
+
+/* 1-[2] 해당 소켓/파이프를 논블락으로 만들기 */
 void s_MakeNonblock(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1) {
@@ -264,7 +278,7 @@ void s_MakeNonblock(int fd) {
     }
 }
 
-/* 2-(3)-[1] 클라이언트에서 메시지 받기 */    
+/* 2-[1] 클라이언트에서 메시지 받기 */    
 void s_GetMessageFromClient(int idx) {
     close(ChatServer.server_sock); 
     char buffer[BUFFER_SIZE];
@@ -287,16 +301,3 @@ void s_GetMessageFromClient(int idx) {
     ChatServer.client_socket[idx] = 0;
     exit(0); // 프로세스 종료
 }
-
-// SIGCHLD 핸들러: 자식 프로세스 종료 시 호출
-void s_handle_sigchld(int sig) {
-    int status;
-    pid_t pid;
-
-    // 종료된 모든 자식 프로세스 회수
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        printf("자식 프로세스 회수(PID: %d), \
-            종료 상태: %d\n", pid, WEXITSTATUS(status));
-    }
-}
-
