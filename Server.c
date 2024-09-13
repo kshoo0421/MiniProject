@@ -9,21 +9,21 @@
 /* ===== main.c용 함수 구현 ====== */
 /* 1. 서버 초기화 */
 void S_Init() {
-    s_MakeDaemon();
-    s_InitMembers();
-    s_InitClientSocket();   // (5) 클라이언트용 소켓 초기화
-    s_InitServerSocket();   // (1) 서버 소켓 초기화
-    s_InitPipes();          // (4) 파이프들 초기화
-    s_SetServerAddress();   // (2) 서버 주소 설정
-    s_BindServerSocket();   // (3) 서버 주소 - 서버 소켓 연결
-    s_ListenClients();      // (6) 클라이언트 Listen 등록
+    s_MakeDaemon();         // (1) 서버 프로그램을 데몬 프로세스로
+    s_InitMembers();        // (2) 서버 멤버변수 초기화
+    s_InitClientSocket();   // (3) 클라이언트용 소켓 초기화
+    s_InitServerSocket();   // (4) 서버 소켓 초기화
+    s_InitPipes();          // (5) 파이프들 초기화
+    s_SetServerAddress();   // (6) 서버 주소 설정
+    s_BindServerSocket();   // (7) 서버 주소 - 서버 소켓 연결
+    s_ListenClients();      // (8) 클라이언트 Listen 등록
 }
 
 /* 2. 서버 운영 */
 void S_ServerService() {
     s_SetSaHandler(); // 자식 프로세스 종료 시 자동 회수
     while(1) {
-        int new_socket = s_AcceptNewSocket();
+        int new_socket = s_AcceptNewSocket(); // 클라이언트 연결 -> 새 소켓 생성
         if(new_socket > 0) {    // 새 소켓 받아오기 성공 시
             int idx = s_UpdateNewSocket(new_socket);    // 등록
             s_ForkForClientMessage(idx);    // 해당 클라이언트용 추가 프로세스 실행
@@ -274,29 +274,29 @@ void s_GetMessageFromClient(int idx) {
         // 클라이언트로부터 데이터 수신
         memset(buffer, 0, sizeof(buffer));
         int valread = read(ChatServer.client_socket[idx], buffer, BUFFER_SIZE);
-        if (valread == 0) {
-            // 클라이언트 연결 종료
-            printf("Client disconnected, socket fd: %d\n", ChatServer.client_socket[idx]);
-            close(ChatServer.client_socket[idx]);
-            close(ChatServer.pipes[idx][1]);
-            ChatServer.client_socket[idx] = 0;
-            exit(0);
+        if (valread == 0) { // 클라이언트 연결 종료
+            printf("클라이언트 연결 종료: %d\n", ChatServer.client_socket[idx]);
+            break;
         }
         buffer[valread] = '\0';
         // 부모 프로세스에 메시지 전송
         write(ChatServer.pipes[idx][1], buffer, strlen(buffer));
     }
+    close(ChatServer.client_socket[idx]);
+    close(ChatServer.pipes[idx][1]);
+    ChatServer.client_socket[idx] = 0;
     exit(0); // 프로세스 종료
 }
 
 // SIGCHLD 핸들러: 자식 프로세스 종료 시 호출
-void handle_sigchld(int sig) {
+void s_handle_sigchld(int sig) {
     int status;
     pid_t pid;
 
     // 종료된 모든 자식 프로세스 회수
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        printf("Collected child process (PID: %d), exit status: %d\n", pid, WEXITSTATUS(status));
+        printf("자식 프로세스 회수(PID: %d), \
+            종료 상태: %d\n", pid, WEXITSTATUS(status));
     }
 }
 

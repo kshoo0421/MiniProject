@@ -8,8 +8,7 @@
 
 /* ===== main.c용 함수 구현 ===== */
 /* 1. 클라이언트 초기화 */
-void C_init() {
-//    c_SetUserId(); // 사용자 ID 설정
+void C_Init() {
     c_InitClientSocket();
     c_SetServerAddress();
 }
@@ -21,32 +20,24 @@ void C_Connect() {
 
 /* 3. 클라이언트 서비스 */
 void C_ClientService() {
-    int pipefd[2], pipe2[2];
-    if (pipe(pipefd) == -1) {
-        perror("pipe");
-        exit(EXIT_FAILURE);
-    }
+    // pipe1 : 자식->부모 / pipe2 : 부모->자식
+    int pipe1[2], pipe2[2]; 
+    c_ConnectPipe(pipe1);
+    c_ConnectPipe(pipe2);
 
-    if (pipe(pipe2) == -1) {
-        perror("pipe");
-        exit(EXIT_FAILURE);
-    }
-
-
-    char buffer[BUFFER_SIZE];
+    char buffer[BUFFER_SIZE]; // 버퍼 초기화
     memset(buffer, 0, BUFFER_SIZE);        
 
-    // 자식 프로세스 생성
     pid_t pid = fork();
     if (pid < 0) { // fork 실패
         perror("fork failed");
         exit(EXIT_FAILURE);
     }
-    else if (pid == 0) { // 자식 프로세스: 사용자 입력을 처리
-        c_ChildProcess(pipefd, pipe2, buffer);
+    else if (pid == 0) { // 자식 프로세스: 사용자 입력 처리
+        c_ChildProcess(pipe1, pipe2, buffer);
     } 
-    else {
-        c_ParentProcess(pipefd, pipe2, buffer); // 부모 프로세스: 서버와의 통신 처리
+    else {  // 부모 프로세스: 서버와의 통신 처리
+        c_ParentProcess(pipe1, pipe2, buffer); 
     }
 }
 
@@ -96,191 +87,205 @@ void c_ConnectToServer() {
 }
 
 /* 3. C_ClientService() : 클라이언트 서비스*/
+
+void c_LoginSystem(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]) {
+    printf("[로그인 시스템]\n");
+    printf("1 : 로그인\n");
+    printf("2 : 회원가입\n");
+    printf("> ");
+
+    memset(buffer, 0, BUFFER_SIZE); 
+    fgets(buffer, BUFFER_SIZE, stdin);
+    buffer[strcspn(buffer, "\n")] = '\0'; // 줄바꿈 제거
+
+    if(strcmp(buffer, "1") == 0) {
+        printf("ID(20자 이내) : ");
+        fgets(User.id, ID_SIZE, stdin);
+        User.id[strcspn(User.id, "\n")] = '\0'; // 줄바꿈 제거
+
+        printf("PW(20자 이내) : ");
+        c_HideLetters();
+        fgets(User.pw, PW_SIZE, stdin);
+        User.pw[strcspn(User.pw, "\n")] = '\0'; // 줄바꿈 제거
+        c_ShowLetters();
+        printf("\n");
+
+        c_SignIn(buffer, User.id, User.pw);
+        write(pipe1[1], buffer, strlen(buffer));
+
+        printf("로그인 시도 중입니다.\n");
+
+        int bytes_read = read(pipe2[0], buffer, BUFFER_SIZE);
+        if (bytes_read > 0) {
+            buffer[bytes_read] = '\0';
+            if (strcmp(buffer, SIGNIN_SUCCESS) == 0) {
+                User.isLoginned = 1;
+            }
+        }
+    }
+    else if(strcmp(buffer, "2") == 0) {
+        printf("ID(20자 이내) : ");
+        fgets(User.id, ID_SIZE, stdin);
+        User.id[strcspn(User.id, "\n")] = '\0';
+
+        printf("PW(20자 이내) : ");
+        c_HideLetters();
+        fgets(User.pw, PW_SIZE, stdin);
+        User.pw[strcspn(User.pw, "\n")] = '\0';
+        c_ShowLetters();
+        printf("\n");
+
+        c_SignUp(buffer, User.id, User.pw);
+        write(pipe1[1], buffer, strlen(buffer));
+        memset(buffer, 0, BUFFER_SIZE);
+        printf("회원가입 중입니다.\n");
+        
+        int bytes_read = read(pipe2[0], buffer, BUFFER_SIZE);
+    }
+    else {
+        printf("잘못된 값을 입력했습니다.\n");
+        printf("다시 입력해주세요.\n");
+    }
+}
+
 /* 3-(1) 자식 프로세스: 사용자 입력을 처리 */
-void c_ChildProcess(int pipefd[2], int pipe2[2], char* buffer) {
-    close(pipefd[0]);  // 자식은 읽기 파이프를 닫음
-    close(pipe2[1]); // 부모용 읽기 파이프 닫기
-    printf("exit 입력 시 프로그램 종료\n");
-    
+void c_ChildProcess(int pipe1[2], int pipe2[2], char* buffer) {
+    close(pipe1[0]);  // 부모용 읽기 파이프를 닫음
+    close(pipe2[1]); // 부모용 쓰기 파이프 닫기
 
     while (1) {        
         if(User.isLoginned == 0) {  // 아직 로그인 안됨
-            printf("[로그인 시스템]\n");
-            printf("1 : 로그인\n");
-            printf("2 : 회원가입\n");
-            printf("> ");
-
-            memset(buffer, 0, BUFFER_SIZE); 
-            fgets(buffer, BUFFER_SIZE, stdin);
-            buffer[strcspn(buffer, "\n")] = '\0'; // 줄바꿈 제거
-
-            if(strcmp(buffer, "1") == 0) {
-                printf("ID(20자 이내) : ");
-                fgets(User.id, ID_SIZE, stdin);
-                User.id[strcspn(User.id, "\n")] = '\0'; // 줄바꿈 제거
-
-                printf("PW(20자 이내) : ");
-                c_HideLetters();
-                fgets(User.pw, PW_SIZE, stdin);
-                User.pw[strcspn(User.pw, "\n")] = '\0'; // 줄바꿈 제거
-                c_ShowLetters();
-                printf("\n");
-
-                c_SignIn(buffer, User.id, User.pw);
-                write(pipefd[1], buffer, strlen(buffer));
-
-                printf("로그인 시도 중입니다.\n");
-
-                int bytes_read = read(pipe2[0], buffer, BUFFER_SIZE);
-                if (bytes_read > 0) {
-                    buffer[bytes_read] = '\0';
-                    if (strcmp(buffer, SIGNIN_SUCCESS) == 0) {
-                        User.isLoginned = 1;
-                    }
-                }
-            }
-            else if(strcmp(buffer, "2") == 0) {
-                printf("ID(20자 이내) : ");
-                fgets(User.id, ID_SIZE, stdin);
-                User.id[strcspn(User.id, "\n")] = '\0';
-
-                printf("PW(20자 이내) : ");
-                c_HideLetters();
-                fgets(User.pw, PW_SIZE, stdin);
-                User.pw[strcspn(User.pw, "\n")] = '\0';
-                c_ShowLetters();
-                printf("\n");
-
-                c_SignUp(buffer, User.id, User.pw);
-                write(pipefd[1], buffer, strlen(buffer));
-                memset(buffer, 0, BUFFER_SIZE);
-                printf("회원가입 중입니다.\n");
-                
-                int bytes_read = read(pipe2[0], buffer, BUFFER_SIZE);
-            }
-            else {
-                printf("잘못된 값을 입력했습니다.\n");
-                printf("다시 입력해주세요.\n");
-            }
+            c_LoginSystem(pipe1, pipe2, buffer);
             continue;
         }
 
         fgets(buffer, BUFFER_SIZE, stdin);
         buffer[strcspn(buffer, "\n")] = '\0'; // 줄바꿈 제거
-        // "exit" 입력 시 클라이언트 종료
+
         if (strcmp(buffer, "exit") == 0) {
             printf("종료\n");
-            write(pipefd[1], "exit", strlen("exit"));
+            write(pipe1[1], "exit", strlen("exit"));
             break;
         }
 
         if (strcmp(buffer, "logout") == 0) {
             printf("로그아웃\n");
-            write(pipefd[1], "logout", strlen("logout"));
+            write(pipe1[1], "logout", strlen("logout"));
             User.isLoginned = 0;
             continue;
         }
-        
-        c_AddId(buffer);
+
+        c_AddId(buffer);    // 버퍼에 id 추가
         // 사용자 입력을 파이프로 부모에게 전달
-        write(pipefd[1], buffer, strlen(buffer));
+        write(pipe1[1], buffer, strlen(buffer));
         memset(buffer, 0, BUFFER_SIZE);        
     }
-    close(pipefd[1]);
+    close(pipe1[1]);
     close(pipe2[0]);
     exit(0);
 }
 
+void c_LoginCommunication(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]) {
+    memset(buffer, 0, BUFFER_SIZE);
+    int bytes_read = read(pipe1[0], buffer, BUFFER_SIZE);
+    if (bytes_read > 0) {
+        buffer[bytes_read] = '\0';
+
+        if (strcmp(buffer, "exit") == 0) {
+            printf("프로그램을 종료합니다.\n");
+            exit(0);
+        }
+        send(User.sockfd, buffer, strlen(buffer), 0);
+    }
+    
+    memset(buffer, 0, BUFFER_SIZE);
+    int valread = read(User.sockfd, buffer, BUFFER_SIZE);
+    if (valread > 0) {
+        buffer[valread] = '\0';
+        if(strcmp(buffer, SIGNIN_FAILED) == 0) {
+            printf("로그인에 실패했습니다.\n");
+            printf("다시 시도해주세요.\n");
+        }
+        else if(strcmp(buffer, SIGNIN_SUCCESS) == 0) {
+            printf("로그인에 성공했습니다.\n");
+            User.isLoginned = 1;
+        }
+        else if(strcmp(buffer, SIGNUP_FAILED) == 0) {
+            printf("회원가입에 실패했습니다.\n");
+            printf("다시 시도해주세요.\n");
+        }
+        else if(strcmp(buffer, SIGNUP_SUCCESS) == 0) {
+            printf("회원가입에 성공했습니다.\n");
+            printf("로그인해주세요.\n");
+        }
+        else if(strcmp(buffer, SIGNOUT_FAILED) == 0) {
+            printf("로그아웃에 실패했습니다.\n");
+            printf("다시 시도해주세요.\n");
+        }
+        else if(strcmp(buffer, SIGNUP_SUCCESS) == 0) {
+            printf("로그아웃에 성공했습니다.\n");
+            printf("로그인해주세요.\n");
+        }
+        write(pipe2[1], buffer, strlen(buffer));
+    }
+}
+
+int c_ReadUserInput(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]) {
+    memset(buffer, 0, BUFFER_SIZE);
+    int bytes_read = read(pipe1[0], buffer, BUFFER_SIZE - strlen(User.id) - 5);
+    // id 칸 확보
+    if (bytes_read > 0) {
+        buffer[bytes_read] = '\0';
+        // "exit" 메시지를 받으면 종료
+        if (strcmp(buffer, "exit") == 0) {
+            printf("프로그램을 종료합니다.\n");
+            return 1;
+        }
+        if (strcmp(buffer, "logout") == 0) {
+            c_SignOut(buffer, User.id, User.pw);
+            send(User.sockfd, buffer, strlen(buffer), 0);
+            User.isLoginned = 0;
+            return 2;
+        }
+        // 서버에 메시지 전송
+        send(User.sockfd, buffer, strlen(buffer), 0);
+    }
+    return 0;
+}
+
+void c_ReceiveMessageFromServer(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]) {
+    memset(buffer, 0, BUFFER_SIZE);
+    int valread = read(User.sockfd, buffer, BUFFER_SIZE);
+    if (valread > 0) {
+        buffer[valread] = '\0';
+        printf("%s\n", buffer);
+    }
+}
+
 /* 3-(2) 부모 프로세스: 서버와의 통신 처리 */
-void c_ParentProcess(int pipefd[2], int pipe2[2], char* buffer) {
-    close(pipefd[1]);  // 부모는 쓰기 파이프를 닫음
+void c_ParentProcess(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]) {
+    close(pipe1[1]);  // 부모는 쓰기 파이프를 닫음
     close(pipe2[0]);    // 자식이 읽는 파이프 닫기
-    c_MakeNonblock(pipefd[0]);
-    c_MakeNonblock(User.sockfd);
+    c_MakeNonblock(pipe1[0]);       // 지속적인 입력 확인용
+    c_MakeNonblock(User.sockfd);    // 지속적인 수신 확인용
 
     while (1) {
         if(User.isLoginned == 0) { // 로그인이 안되었다면
-            memset(buffer, 0, BUFFER_SIZE);
-            int bytes_read = read(pipefd[0], buffer, BUFFER_SIZE);
-            if (bytes_read > 0) {
-                buffer[bytes_read] = '\0';
-
-                if (strcmp(buffer, "exit") == 0) {
-                    printf("프로그램을 종료합니다.\n");
-                    exit(0);
-                    break;
-                }
-                send(User.sockfd, buffer, strlen(buffer), 0);
-            }
-            
-            sleep(1);   // 1초 대기
-
-            memset(buffer, 0, BUFFER_SIZE);
-            int valread = read(User.sockfd, buffer, BUFFER_SIZE);
-            if (valread > 0) {
-                buffer[valread] = '\0';
-                if(strcmp(buffer, SIGNIN_FAILED) == 0) {
-                    printf("로그인에 실패했습니다.\n");
-                    printf("다시 시도해주세요.\n");
-                }
-                else if(strcmp(buffer, SIGNIN_SUCCESS) == 0) {
-                    printf("로그인에 성공했습니다.\n");
-                    User.isLoginned = 1;
-                }
-                else if(strcmp(buffer, SIGNUP_FAILED) == 0) {
-                    printf("회원가입에 실패했습니다.\n");
-                    printf("다시 시도해주세요.\n");
-                }
-                else if(strcmp(buffer, SIGNUP_SUCCESS) == 0) {
-                    printf("회원가입에 성공했습니다.\n");
-                    printf("로그인해주세요.\n");
-                }
-                else if(strcmp(buffer, SIGNOUT_FAILED) == 0) {
-                    printf("로그아웃에 실패했습니다.\n");
-                    printf("다시 시도해주세요.\n");
-                }
-                else if(strcmp(buffer, SIGNUP_SUCCESS) == 0) {
-                    printf("로그아웃에 성공했습니다.\n");
-                    printf("로그인해주세요.\n");
-                }
-                write(pipe2[1], buffer, strlen(buffer));
-            }
+            // 로그인용 통신 진행
+            c_LoginCommunication(pipe1, pipe2, buffer); 
             continue;
         }
 
         // 파이프에서 사용자 입력 읽기
-        memset(buffer, 0, BUFFER_SIZE);
-        int bytes_read = read(pipefd[0], buffer, BUFFER_SIZE - strlen(User.id) - 5);
-        // id 칸 확보
-        if (bytes_read > 0) {
-            buffer[bytes_read] = '\0';
-            // "exit" 메시지를 받으면 종료
-            if (strcmp(buffer, "exit") == 0) {
-                printf("프로그램을 종료합니다.\n");
-                break;
-            }
-            if (strcmp(buffer, "logout") == 0) {
-                c_SignOut(buffer, User.id, User.pw);
-                send(User.sockfd, buffer, strlen(buffer), 0);
-                User.isLoginned = 0;
-                continue;
-            }
-            // 서버에 메시지 전송
-            send(User.sockfd, buffer, strlen(buffer), 0);
-        }
+        int readResult = c_ReadUserInput(pipe1, pipe2, buffer);
+        if(readResult == 1) break; // 프로세스 종료
+        if(readResult == 2) continue; // 로그아웃
 
         // 서버로부터의 메시지 수신 처리
-        memset(buffer, 0, BUFFER_SIZE);
-        int valread = read(User.sockfd, buffer, BUFFER_SIZE);
-        if (valread > 0) {
-            buffer[valread] = '\0';
-            printf("%s\n", buffer);
-        }
+        c_ReceiveMessageFromServer(pipe1, pipe2, buffer);
     }
-    close(User.sockfd);
-    close(pipefd[0]);
+    close(pipe1[0]);
     close(pipe2[1]);
-    exit(0);
 }
 
 
@@ -346,4 +351,11 @@ void c_ShowLetters() {
     tcgetattr(STDIN_FILENO, &tty);  // 현재 터미널 속성 가져오기
     tty.c_lflag |= ECHO;            // ECHO 비트 설정: 입력된 문자 표시
     tcsetattr(STDIN_FILENO, TCSANOW, &tty);  // 변경된 속성 즉시 적용
+}
+
+void c_ConnectPipe(int pipefd[2]) {
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
 }

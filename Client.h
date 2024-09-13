@@ -20,7 +20,7 @@ typedef struct client {
 static Client User;
 
 /* main.c용 함수. C_로 시작 */
-void C_init();          // 1. 클라이언트 초기화
+void C_Init();          // 1. 클라이언트 초기화
 void C_Connect();       // 2. 서버 연결
 void C_ClientService(); // 3. 클라이언트 서비스
 void C_Close();         // 4. 클라이언트 종료
@@ -36,9 +36,9 @@ void c_ConnectToServer();   // (1) 서버 연결
 
 /* 3. C_ClientService() : 클라이언트 서비스*/
 // (1) 자식 프로세스 : 사용자 입력을 처리
-void c_ChildProcess(int pipefd[2], int pipe2[2], char* buffer); 
+void c_ChildProcess(int pipe1[2], int pipe2[2], char* buffer); 
 // (2) 부모 프로세스: 서버와의 통신 처리
-void c_ParentProcess(int pipefd[2], int pipe2[2], char* buffer); 
+void c_ParentProcess(int pipe1[2], int pipe2[2], char* buffer); 
 
 /* 추가 내부 함수 : 3-(2) */
 void c_MakeNonblock(int fd);            // [1] 해당 fd를 non-block으로 만듦
@@ -50,4 +50,9 @@ void c_SignOut(char buffer[BUFFER_SIZE], char id[20], char pw[20]);
 void c_ClearInputBuffer();
 void c_HideLetters();
 void c_ShowLetters();
+void c_ConnectPipe(int pipefd[2]);
+void c_LoginSystem(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]);
+void c_LoginCommunication(int pipe1[2], int pipe[2], char buffer[BUFFER_SIZE]);
+int c_ReadUserInput(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]);
+void c_ReceiveMessageFromServer(int pipe1[2], int pipe2[2], char buffer[BUFFER_SIZE]);
 #endif
