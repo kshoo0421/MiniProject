@@ -8,11 +8,13 @@
 /* ===== main.c용 함수 구현 ====== */
 /* 1. 서버 초기화 */
 void S_Init() {
+    s_MakeDaemon();
+    s_InitMembers();
+    s_InitClientSocket();   // (5) 클라이언트용 소켓 초기화
     s_InitServerSocket();   // (1) 서버 소켓 초기화
+    s_InitPipes();          // (4) 파이프들 초기화
     s_SetServerAddress();   // (2) 서버 주소 설정
     s_BindServerSocket();   // (3) 서버 주소 - 서버 소켓 연결
-    s_InitPipes();          // (4) 파이프들 초기화
-    s_InitClientSocket();   // (5) 클라이언트용 소켓 초기화
     s_ListenClients();      // (6) 클라이언트 Listen 등록
 }
 
@@ -34,7 +36,26 @@ void S_Close() {
 }
 
 /* ===== Server.c용 함수 구현 ====== */
+
+void s_InitMembers() {
+    ChatServer.cur_mem = 0;
+    for(int i = 0; i < MAX_CLIENT; i++) {
+        ChatServer.loginned[i] = 0;
+        memset(ChatServer.IDPW[i], 0, 20);
+    }
+}
+
+
 /* === 1. S_Init() : 서버 초기화 === */
+void s_MakeDaemon() {
+    pid_t pid;
+    if((pid = fork()) < 0) {
+        perror("error()");
+    } else if(pid != 0) { /* 부모 프로세스는 종료한다. */
+        exit(0);
+    }
+}
+
 /* 1-(1) 서버 소켓 초기화 */
 void s_InitServerSocket() {
     ChatServer.server_sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -70,22 +91,15 @@ void s_BindServerSocket() {
 
 /* 1-(4) 클라이언트용 소켓 초기화 */
 void s_InitClientSocket() {
-    // 1. 최대 클라이언트 갯수 초기값 : 50
-    ChatServer.max_client = 50;
-
-    // 2. 최대 클라이언트 갯수만큼 소켓 할당
-    ChatServer.client_socket =      
-        (int*)malloc(sizeof(int)*(ChatServer.max_client));
-
     // 3. 클라이언트 소켓 초기화
-    for (int i = 0; i < ChatServer.max_client; i++) {
+    for (int i = 0; i < MAX_CLIENT; i++) {
         ChatServer.client_socket[i] = 0;
     }
 }
 
 /* 1-(5) 파이프들 초기화 */
 void s_InitPipes() {
-    for (int i = 0; i < ChatServer.max_client; i++) {
+    for (int i = 0; i < MAX_CLIENT; i++) {
         if (pipe(ChatServer.pipes[i]) == -1) {
             perror("pipe");
             exit(EXIT_FAILURE);
@@ -97,7 +111,7 @@ void s_InitPipes() {
 
 /* 1-(6) 클라이언트 Listen 등록 */
 void s_ListenClients() {
-    if (listen(ChatServer.server_sock, ChatServer.max_client) < 0) {
+    if (listen(ChatServer.server_sock, MAX_CLIENT) < 0) {
         perror("listen failed");
         close(ChatServer.server_sock);
         exit(EXIT_FAILURE);
@@ -121,7 +135,7 @@ int s_AcceptNewSocket() {
 /* 2-(2) 새 소켓을 서버의 클라이언트 소켓에 등록 */
 int s_UpdateNewSocket(int new_socket) {
     int idx = -1;
-    for(int i = 0; i < ChatServer.max_client; i++) {
+    for(int i = 0; i < MAX_CLIENT; i++) {
         if(ChatServer.client_socket[i] == 0) {
             ChatServer.client_socket[i] = new_socket;
             idx = i;
@@ -149,7 +163,7 @@ void s_Broadcast() {
     char buffer[BUFFER_SIZE];
     memset(buffer, 0, sizeof(buffer));
     int bytes_read;
-    for(int i = 0; i < ChatServer.max_client; i++) {
+    for(int i = 0; i < MAX_CLIENT; i++) {
         if(ChatServer.client_socket[i] == 0) continue; // 빈 소켓이면 통과
 
         bytes_read = read(ChatServer.pipes[i][0], buffer, BUFFER_SIZE);
@@ -157,17 +171,75 @@ void s_Broadcast() {
         if (bytes_read > 0) {
             buffer[bytes_read] = '\0';
             if(buffer[0] == '\0') continue;
-            printf("Broadcasting message: %s\n", buffer);
-            // 다른 클라이언트들에게 메시지 브로드캐스트
-            for (int j = 0; j < ChatServer.max_client; j++) {
-                if (ChatServer.client_socket[j] != 0 && i != j) {
-                    send(ChatServer.client_socket[j], buffer, strlen(buffer), 0);
+            else if(buffer[0] == 'S') { // 로그인 관련
+                if(buffer[1] == 'I') {
+                    int idx = -1;
+                    for(int i = 0; i < ChatServer.cur_mem; i++) {
+                        if(strcmp(buffer, ChatServer.IDPW[i]) == 0) {
+                            if(ChatServer.loginned[i] == 0) {
+                                ChatServer.loginned[i] = 1; // 로그인 활성화
+                                idx = i;
+                            }
+                            break;
+                        }
+                    }
+                    if(idx != -1) {
+                        strcpy(buffer, SIGNIN_SUCCESS); // 로그인 성공
+                    }
+                    else {
+                        strcpy(buffer, SIGNIN_FAILED); // 로그인 실패
+                    }
                 }
-            }            
+                else if(buffer[1] == 'U') {
+                    buffer[1] = 'I';
+                    int idx = -1;
+                    for(int i = 0; i < ChatServer.cur_mem; i++) {
+                        if(strcmp(buffer, ChatServer.IDPW[i]) == 0) {
+                            idx = i;
+                            break;
+                        }
+                    }
+                    if(idx != -1) {
+                        strcpy(buffer, SIGNUP_FAILED); // 회원가입 실패
+                    }
+                    else {
+                        strcpy(ChatServer.IDPW[ChatServer.cur_mem++], buffer);
+                        strcpy(buffer, SIGNUP_SUCCESS); // 회원가입 성공
+                    }
+                }
+                else if(buffer[1] == 'O') { // 로그아웃
+                    buffer[1] = 'I';
+                    int idx = -1;
+                    for(int i = 0; i < ChatServer.cur_mem; i++) {
+                        if(strcmp(buffer, ChatServer.IDPW[i]) == 0) {
+                            if(ChatServer.loginned[i] == 1) {
+                                ChatServer.loginned[i] = 0;
+                                idx = i;
+                            }
+                            break;
+                        }
+                    }
+                    if(idx == -1) {
+                        strcpy(buffer, SIGNOUT_FAILED); // 로그아웃 실패
+                    }
+                    else {
+                        strcpy(buffer, SIGNOUT_SUCCESS); // 로그아웃 성공
+                    }
+                }
+                send(ChatServer.client_socket[i], buffer, strlen(buffer), 0);
+            }
+            else { // if(buffer[0] == '[') 
+                printf("Broadcasting message: %s\n", buffer);
+                // 다른 클라이언트들에게 메시지 브로드캐스트
+                for (int j = 0; j < MAX_CLIENT; j++) {
+                    if (ChatServer.client_socket[j] != 0 && i != j) {
+                        send(ChatServer.client_socket[j], buffer, strlen(buffer), 0);
+                    }
+                }            
+            }
         }
     }
 }
-
 
 /* === 내부 추가 함수 === */
 /* 1-(1)-[1] 해당 소켓/파이프를 논블락으로 만들기 */
@@ -197,6 +269,7 @@ void s_GetMessageFromClient(int idx) {
             // 클라이언트 연결 종료
             printf("Client disconnected, socket fd: %d\n", ChatServer.client_socket[idx]);
             close(ChatServer.client_socket[idx]);
+            close(ChatServer.pipes[idx][1]);
             ChatServer.client_socket[idx] = 0;
             exit(0);
         }

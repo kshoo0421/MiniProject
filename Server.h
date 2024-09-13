@@ -6,8 +6,10 @@
 #include "Macros.h"
 
 typedef struct server {
-    int max_client, server_sock, max_sd, sd, activity;
-    int* client_socket;
+    int server_sock, cur_mem;
+    char IDPW[MAX_CLIENT][20];
+    int loginned[MAX_CLIENT];
+    int client_socket[MAX_CLIENT];
     int pipes[50][2];
 
     struct sockaddr_in address;
@@ -23,6 +25,8 @@ void S_Close();         // 3. 서버 종료
 
 /* Server.c용 함수 선언. s_로 시작*/
 /* 1. S_Init() : 서버 초기화 */
+void s_InitMembers();       // 멤버 관련 초기화
+void s_MakeDaemon();        // 데몬 만들기
 void s_InitServerSocket();  // (1) 서버 소켓 초기화
 void s_SetServerAddress();  // (2) 서버 주소 설정
 void s_BindServerSocket();  // (3) 서버 주소 - 서버 소켓 연결
